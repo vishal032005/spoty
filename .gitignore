@@ -1,0 +1,13 @@
+node_modules/
+client/node_modules/
+server/node_modules/
+dist/
+client/dist/
+.env
+*.log
+
+# Android build artifacts
+client/android/.gradle/
+client/android/build/
+client/android/app/build/
+*.apk

@@ -1,0 +1,9 @@
+{
+  "appId": "com.spoty.music",
+  "appName": "Spoty",
+  "webDir": "dist",
+  "server": {
+    "androidScheme": "https"
+  }
+}
+
