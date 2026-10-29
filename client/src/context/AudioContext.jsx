@@ -36,6 +36,7 @@ export function AudioProvider({ children }) {
   const isShuffleRef = useRef(isShuffle);
   const repeatModeRef = useRef(repeatMode);
   const isPlayingRef = useRef(isPlaying);
+  const currentTrackRef = useRef(currentTrack);
   const userPausedRef = useRef(false);
   const keepAliveAudioRef = useRef(null);
   const webAudioKeepAliveRef = useRef(null);
@@ -88,6 +89,7 @@ export function AudioProvider({ children }) {
   useEffect(() => { isShuffleRef.current = isShuffle; }, [isShuffle]);
   useEffect(() => { repeatModeRef.current = repeatMode; }, [repeatMode]);
   useEffect(() => { isPlayingRef.current = isPlaying; }, [isPlaying]);
+  useEffect(() => { currentTrackRef.current = currentTrack; }, [currentTrack]);
 
   // Robust Next Track / Song End Handler (reads from mutable refs)
   const handleTrackEnded = () => {
@@ -215,6 +217,37 @@ export function AudioProvider({ children }) {
     return () => clearInterval(timer);
   }, [isPlaying]);
 
+  const playViaYouTubeIframe = (track) => {
+    if (!track) return;
+    isYouTubeRef.current = true;
+    try { audioRef.current.pause(); } catch {}
+
+    const cleanUrl = track.previewUrl || '';
+    let videoId = track.id?.replace(/^yt_/, '') || '';
+    if (cleanUrl.includes('youtube?id=')) {
+      videoId = cleanUrl.split('youtube?id=')[1]?.split('&')[0] || videoId;
+    } else if (cleanUrl.startsWith('youtube:')) {
+      videoId = cleanUrl.replace('youtube:', '');
+    }
+
+    setDuration(track.duration || 180);
+    setCurrentTime(0);
+
+    if (ytPlayerReadyRef.current && ytPlayerRef.current?.loadVideoById) {
+      try {
+        ytPlayerRef.current.loadVideoById(videoId);
+        ytPlayerRef.current.playVideo();
+        setIsPlaying(true);
+        isPlayingRef.current = true;
+        setErrorNotice(null);
+      } catch (err) {
+        console.warn('YT fallback error:', err);
+      }
+    } else {
+      pendingVideoIdRef.current = videoId;
+    }
+  };
+
   // Setup HTML5 Audio element event listeners
   useEffect(() => {
     const audio = audioRef.current;
@@ -236,6 +269,13 @@ export function AudioProvider({ children }) {
     const onError = (e) => {
       if (!isYouTubeRef.current) {
         console.warn('Audio playback error:', e);
+        const activeTrack = currentTrackRef.current;
+        if (activeTrack && (activeTrack.id?.startsWith('yt_') || activeTrack.previewUrl?.includes('youtube') || activeTrack.previewUrl?.includes('invidious'))) {
+          console.log('[AudioContext] Direct stream failed, falling back to YouTube iframe player for:', activeTrack.title);
+          playViaYouTubeIframe(activeTrack);
+          return;
+        }
+
         setIsPlaying(false);
         setErrorNotice('Unable to play audio stream from this source. Trying next track...');
       }

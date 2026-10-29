@@ -1,6 +1,37 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { API_BASE } from '../config';
 
+async function fetchSaavnDirect(q, signal) {
+  try {
+    const res = await fetch(`https://saavnapi-nine.vercel.app/result/?query=${encodeURIComponent(q)}`, {
+      signal
+    });
+    if (!res.ok) return [];
+    const songs = await res.json();
+    if (!Array.isArray(songs)) return [];
+    return songs.map(song => {
+      const audioUrl = song.media_url || song.media_preview_url || '';
+      const title = (song.song || 'Unknown Title')
+        .replace(/&quot;/g, '"')
+        .replace(/&amp;/g, '&')
+        .replace(/&#039;/g, "'");
+      const artist = song.primary_artists || song.singers || song.music || 'Various Artists';
+      return {
+        type: 'track',
+        title,
+        image: song.image || '',
+        subtitle: artist,
+        id: `saavn_${song.id || Math.random().toString(36).substring(7)}`,
+        tag: 'JioSaavn (Full 320kbps)',
+        previewUrl: audioUrl,
+        duration: parseInt(song.duration, 10) || 240
+      };
+    }).filter(s => Boolean(s.previewUrl));
+  } catch {
+    return [];
+  }
+}
+
 export function useSearch() {
   const [query, setQuery] = useState('');
   const [debouncedQuery, setDebouncedQuery] = useState('');
@@ -90,22 +121,43 @@ export function useSearch() {
 
     const url = `${API_BASE}/api/search?q=${encodeURIComponent(debouncedQuery)}&source=${source}&type=${filterType}&limit=${LIMIT}&offset=0`;
 
-    fetch(url, { signal: controller.signal })
-      .then(res => {
-        if (!res.ok) throw new Error(`HTTP error ${res.status}`);
-        return res.json();
-      })
-      .then(data => {
-        setResults(data.results || []);
-        setHasMore((data.results || []).length >= LIMIT);
+    const backendPromise = fetch(url, { signal: controller.signal })
+      .then(res => res.ok ? res.json() : { results: [] })
+      .then(data => data.results || [])
+      .catch(() => []);
+
+    const saavnPromise = (source === 'all' || source === 'saavn')
+      ? fetchSaavnDirect(debouncedQuery, controller.signal)
+      : Promise.resolve([]);
+
+    Promise.all([saavnPromise, backendPromise])
+      .then(([saavnResults, backendResults]) => {
+        // Strip out any iTunes (30s Preview) from backend results
+        const cleanBackend = backendResults.filter(r => !r.tag?.toLowerCase().includes('itunes'));
+
+        // Combine: Saavn 320kbps full streams first, then YouTube tracks
+        const combined = [];
+        const seenIds = new Set();
+
+        const addUnique = (item) => {
+          const normTitle = (item.title || '').toLowerCase().trim();
+          if (!seenIds.has(item.id) && !seenIds.has(normTitle)) {
+            seenIds.add(item.id);
+            seenIds.add(normTitle);
+            combined.push(item);
+          }
+        };
+
+        saavnResults.forEach(addUnique);
+        cleanBackend.forEach(addUnique);
+
+        setResults(combined);
+        setHasMore(combined.length >= LIMIT);
         setIsLoading(false);
         addRecentSearch(debouncedQuery);
       })
       .catch(err => {
-        if (err.name === 'AbortError') {
-          // Expected on new keystrokes, do not set error state
-          return;
-        }
+        if (err.name === 'AbortError') return;
         console.error('Search fetch failed:', err);
         setError('Failed to load search results.');
         setIsLoading(false);
