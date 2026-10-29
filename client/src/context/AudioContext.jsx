@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useState, useRef, useEffect } from 'react';
+import { API_BASE } from '../config';
 
 const AudioContext = createContext(null);
 
@@ -346,43 +347,35 @@ export function AudioProvider({ children }) {
       }
     }
 
-    const isYT = track.previewUrl?.startsWith('youtube:') || track.id?.startsWith('yt_');
-    isYouTubeRef.current = isYT;
-
-    if (isYT) {
-      // Pause HTML5 audio
-      audioRef.current.pause();
-
-      const videoId = track.previewUrl?.replace('youtube:', '') || track.id?.replace('yt_', '');
-      setDuration(track.duration || 180);
-      setCurrentTime(0);
-
-      if (ytPlayerReadyRef.current && ytPlayerRef.current?.loadVideoById) {
-        ytPlayerRef.current.loadVideoById(videoId);
-        ytPlayerRef.current.playVideo();
-        setIsPlaying(true);
-      } else {
-        pendingVideoIdRef.current = videoId;
-      }
-    } else {
-      // Pause YouTube player
-      if (ytPlayerRef.current?.pauseVideo) {
-        try { ytPlayerRef.current.pauseVideo(); } catch {}
-      }
-
-      if (!track.previewUrl) {
-        setErrorNotice('No audio stream URL available for this item.');
-        handleTrackEnded();
-        return;
-      }
-
-      const audio = audioRef.current;
-      audio.src = track.previewUrl;
-      audio.play().catch(err => {
-        console.warn('Autoplay blocked or error:', err.message);
-        setIsPlaying(false);
-      });
+    // Resolve audio URL: All tracks (including YouTube) play via direct audio stream for 100% reliable background & lock screen play
+    let audioUrl = track.previewUrl || '';
+    if (audioUrl.startsWith('youtube:')) {
+      const vid = audioUrl.replace('youtube:', '');
+      audioUrl = `${API_BASE}/api/stream/youtube?id=${vid}`;
+    } else if (audioUrl.startsWith('/api/')) {
+      audioUrl = `${API_BASE}${audioUrl}`;
+    } else if (!audioUrl && track.id?.startsWith('yt_')) {
+      const vid = track.id.replace('yt_', '');
+      audioUrl = `${API_BASE}/api/stream/youtube?id=${vid}`;
     }
+
+    if (!audioUrl) {
+      setErrorNotice('No audio stream URL available for this item.');
+      handleTrackEnded();
+      return;
+    }
+
+    isYouTubeRef.current = false;
+    if (track.duration) {
+      setDuration(track.duration);
+    }
+
+    const audio = audioRef.current;
+    audio.src = audioUrl;
+    audio.play().catch(err => {
+      console.warn('Playback error or blocked:', err.message);
+      setIsPlaying(false);
+    });
   };
 
   const togglePlayPause = () => {

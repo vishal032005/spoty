@@ -9,7 +9,7 @@ export function useSearch() {
   const [isLoadingMore, setIsLoadingMore] = useState(false);
   const [hasMore, setHasMore] = useState(true);
   const [error, setError] = useState(null);
-  const [source, setSource] = useState('saavn'); // 'saavn' (320kbps background play) | 'piped' | 'itunes' | 'archive' | 'all'
+  const [source, setSource] = useState('all'); // 'all' (YouTube + Saavn full tracks) | 'piped' | 'saavn'
   const [filterType, setFilterType] = useState('all'); // 'all' | 'track' | 'artist' | 'album'
   const [recentSearches, setRecentSearches] = useState(() => {
     try {

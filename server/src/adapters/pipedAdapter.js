@@ -59,8 +59,8 @@ class PipedAdapter extends BaseAdapter {
           image: thumb,
           subtitle: artist,
           id: `yt_${videoId}`,
-          tag: 'YouTube (Full Track)',
-          previewUrl: `youtube:${videoId}`,
+          tag: 'YouTube (Background Audio)',
+          previewUrl: `/api/stream/youtube?id=${videoId}`,
           duration: durationSec
         }));
 

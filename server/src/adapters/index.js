@@ -1,6 +1,4 @@
-const ITunesAdapter = require('./itunesAdapter');
 const ArchiveAdapter = require('./archiveAdapter');
-const DeezerAdapter = require('./deezerAdapter');
 const PipedAdapter = require('./pipedAdapter');
 const SaavnAdapter = require('./saavnAdapter');
 
@@ -9,9 +7,7 @@ class AdapterService {
     this.adapters = {
       piped: new PipedAdapter(),
       saavn: new SaavnAdapter(),
-      itunes: new ITunesAdapter(),
-      archive: new ArchiveAdapter(),
-      deezer: new DeezerAdapter()
+      archive: new ArchiveAdapter()
     };
   }
 
@@ -21,55 +17,28 @@ class AdapterService {
   getAvailableSources() {
     return [
       {
+        id: 'all',
+        name: 'All Full Tracks (YouTube + Saavn)',
+        tag: 'Full Audio',
+        description: 'Complete tracks from YouTube and JioSaavn with screen lock and background playback.'
+      },
+      {
         id: 'piped',
-        name: 'YouTube via Piped',
-        tag: 'YouTube (Full Track)',
-        description: 'Full-length tracks via open-source Piped YouTube frontend. No key required.',
-        termsNotice: 'Audio streams via Piped open-source YouTube frontend. For personal non-commercial listening only.'
+        name: 'YouTube Music',
+        tag: 'YouTube (Background Audio)',
+        description: 'Full-length tracks from YouTube with background streaming.'
       },
       {
         id: 'saavn',
         name: 'JioSaavn 320kbps',
-        tag: 'JioSaavn (Full Track)',
-        description: 'Complete high-definition 320kbps full tracks (Bollywood, Punjabi, Pop, English).',
-        termsNotice: 'Public high-fidelity streams provided courtesy of open Saavn endpoints.'
-      },
-      {
-        id: 'itunes',
-        name: 'iTunes Search API',
-        tag: 'iTunes (30s Preview)',
-        description: 'Global catalog, 30-second official high-fidelity AAC/MP3 previews. Keyless & legal.',
-        termsNotice: 'Previews provided courtesy of Apple iTunes Search API. Previews are streamed for personal non-commercial listening only.'
-      },
-      {
-        id: 'archive',
-        name: 'Internet Archive',
-        tag: 'Internet Archive (Full Track)',
-        description: 'Complete recordings, public domain & Creative Commons audio. Keyless & legal.',
-        termsNotice: 'Audio hosted by Internet Archive. Distributed under Creative Commons and Public Domain licenses.'
-      },
-      {
-        id: 'deezer',
-        name: 'Deezer Public API',
-        tag: 'Deezer (30s Preview)',
-        description: 'Deezer open search API, 30-second previews where available.',
-        termsNotice: 'Metadata and audio previews provided by Deezer open public API.'
+        tag: 'JioSaavn (Full 320kbps)',
+        description: 'Complete high-definition 320kbps full tracks.'
       }
     ];
   }
 
   /**
-   * Search across one or multiple adapters.
-   * Standard response contract:
-   * Array<{
-   *   type: 'track' | 'artist' | 'album',
-   *   title: string,
-   *   image: string,
-   *   subtitle: string,
-   *   id: string,
-   *   tag: string,
-   *   previewUrl: string
-   * }>
+   * Search across full-track adapters (No iTunes / 30s previews).
    */
   async search(query, options = {}) {
     if (!query || !query.trim()) {
@@ -77,7 +46,7 @@ class AdapterService {
     }
 
     const cleanQuery = query.trim();
-    const source = (options.source || 'saavn').toLowerCase();
+    const source = (options.source || 'all').toLowerCase();
     const limit = Math.min(Math.max(parseInt(options.limit, 10) || 20, 1), 50);
     const offset = Math.max(parseInt(options.offset, 10) || 0, 0);
 
@@ -89,45 +58,32 @@ class AdapterService {
           return results;
         }
 
-        console.warn(`[AdapterService] ${source} returned 0 results. Trying fallback...`);
-        if (source !== 'saavn') {
-          const saavnResults = await this.adapters.saavn.search(cleanQuery, { ...options, limit, offset }).catch(() => []);
-          if (saavnResults && saavnResults.length > 0) return saavnResults;
-        }
-        if (source !== 'itunes') {
-          return await this.adapters.itunes.search(cleanQuery, { ...options, limit, offset });
+        console.warn(`[AdapterService] ${source} returned 0 results. Trying secondary full-track provider...`);
+        const fallbackSource = source === 'saavn' ? 'piped' : 'saavn';
+        if (this.adapters[fallbackSource]) {
+          const fallbackResults = await this.adapters[fallbackSource].search(cleanQuery, { ...options, limit, offset });
+          if (fallbackResults && fallbackResults.length > 0) return fallbackResults;
         }
       } catch (err) {
         console.warn(`[AdapterService] Error in ${source} adapter:`, err.message);
-
-        // Fallback to Saavn then iTunes so user always gets song results
-        if (source !== 'saavn') {
+        const fallbackSource = source === 'saavn' ? 'piped' : 'saavn';
+        if (this.adapters[fallbackSource]) {
           try {
-            const saavnRes = await this.adapters.saavn.search(cleanQuery, { ...options, limit, offset });
-            if (saavnRes && saavnRes.length > 0) return saavnRes;
+            return await this.adapters[fallbackSource].search(cleanQuery, { ...options, limit, offset });
           } catch {}
         }
-        if (source !== 'itunes') {
-          try {
-            console.log('[AdapterService] Attempting iTunes fallback...');
-            return await this.adapters.itunes.search(cleanQuery, { ...options, limit, offset });
-          } catch (e) {
-            console.warn('[AdapterService] iTunes fallback failed:', e.message);
-          }
-        }
-
         throw err;
       }
     }
 
-    // Unified "all" sources: query Piped & Saavn concurrently for full tracks
-    const pipedPromise = this.adapters.piped.search(cleanQuery, { ...options, limit: Math.ceil(limit * 0.5), offset })
+    // Unified "all" sources: query Piped (YouTube) & Saavn concurrently for full tracks
+    const pipedPromise = this.adapters.piped.search(cleanQuery, { ...options, limit, offset })
       .catch(e => {
-        console.warn('[AdapterService] Piped failed in multi-search:', e.message);
+        console.warn('[AdapterService] YouTube search failed in multi-search:', e.message);
         return [];
       });
 
-    const saavnPromise = this.adapters.saavn.search(cleanQuery, { ...options, limit: Math.ceil(limit * 0.5), offset })
+    const saavnPromise = this.adapters.saavn.search(cleanQuery, { ...options, limit, offset })
       .catch(e => {
         console.warn('[AdapterService] Saavn failed in multi-search:', e.message);
         return [];
@@ -135,12 +91,12 @@ class AdapterService {
 
     const [pipedResults, saavnResults] = await Promise.all([pipedPromise, saavnPromise]);
     
-    // Combine results
+    // Combine results: interleave Saavn and YouTube so user gets best of both
     const combined = [];
     const maxLen = Math.max(pipedResults.length, saavnResults.length);
     for (let i = 0; i < maxLen; i++) {
-      if (pipedResults[i]) combined.push(pipedResults[i]);
       if (saavnResults[i]) combined.push(saavnResults[i]);
+      if (pipedResults[i]) combined.push(pipedResults[i]);
     }
 
     if (combined.length > 0) {

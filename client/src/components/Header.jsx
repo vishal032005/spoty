@@ -130,11 +130,10 @@ export default function Header({
             onChange={(e) => setSource(e.target.value)}
             title="Select Public Legal Audio Source"
           >
-            <option value="piped">YouTube via Piped (Full)</option>
+            <option value="all">All Sources (YouTube + Saavn)</option>
+            <option value="piped">YouTube Music (Background)</option>
             <option value="saavn">JioSaavn 320kbps (Full)</option>
             <option value="archive">Internet Archive (Full)</option>
-            <option value="itunes">iTunes (30s Preview)</option>
-            <option value="all">Unified (All Full Sources)</option>
           </select>
         </div>
 

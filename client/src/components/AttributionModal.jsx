@@ -33,13 +33,13 @@ export default function AttributionModal({ isOpen, onClose }) {
             <h3>Connected Public Data Sources</h3>
 
             <div className="source-item">
-              <h4>1. Apple iTunes Search API</h4>
+              <h4>1. YouTube Music Audio Streams</h4>
               <p>
-                Used to deliver 30-second audio stream previews and official artwork.
+                Used to deliver full audio streams with background and lock screen playback.
               </p>
               <ul>
-                <li><strong>Terms Compliance:</strong> Audio previews are strictly streamed in-memory via the browser HTML5 audio element. Previews are never recorded, downloaded, or cached to local disk.</li>
-                <li><strong>Attribution:</strong> Track and album metadata and audio samples are provided courtesy of Apple Inc.</li>
+                <li><strong>Terms Compliance:</strong> Audio streams are strictly streamed in-memory via the HTML5 audio element. Streams are never recorded, downloaded, or cached to local disk.</li>
+                <li><strong>Attribution:</strong> Track metadata and audio streams are fetched dynamically from open web audio endpoints for non-commercial personal listening.</li>
               </ul>
             </div>
 
