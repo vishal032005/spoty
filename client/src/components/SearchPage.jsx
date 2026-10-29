@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Play, Pause, Heart, Clock, Sparkles, Filter, Music, Disc, Mic, ListPlus } from 'lucide-react';
 import { useAudio } from '../context/AudioContext';
+import { API_BASE } from '../config';
 
 export default function SearchPage({
   query,
@@ -23,7 +24,7 @@ export default function SearchPage({
 
   // Fetch categories for the default Browse All view
   useEffect(() => {
-    fetch('/api/categories')
+    fetch(`${API_BASE}/api/categories`)
       .then(res => res.json())
       .then(data => {
         if (data.categories) setCategories(data.categories);

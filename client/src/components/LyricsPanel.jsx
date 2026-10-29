@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { X, Music } from 'lucide-react';
 import { useAudio } from '../context/AudioContext';
+import { API_BASE } from '../config';
 
 export default function LyricsPanel({ isOpen, onClose }) {
   const { currentTrack, currentTime } = useAudio();
@@ -15,7 +16,7 @@ export default function LyricsPanel({ isOpen, onClose }) {
     setLoading(true);
     setLyrics(null);
     const { title, subtitle: artist, duration } = currentTrack;
-    fetch(`/api/lyrics?title=${encodeURIComponent(title)}&artist=${encodeURIComponent(artist)}&duration=${Math.round(duration || 0)}`)
+    fetch(`${API_BASE}/api/lyrics?title=${encodeURIComponent(title)}&artist=${encodeURIComponent(artist)}&duration=${Math.round(duration || 0)}`)
       .then(r => r.json())
       .then(data => { setLyrics(data.lyrics); setLoading(false); })
       .catch(() => { setLyrics(null); setLoading(false); });

@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
+import { API_BASE } from '../config';
 
 export function useSearch() {
   const [query, setQuery] = useState('');
@@ -87,7 +88,7 @@ export function useSearch() {
     setError(null);
     offsetRef.current = 0;
 
-    const url = `/api/search?q=${encodeURIComponent(debouncedQuery)}&source=${source}&type=${filterType}&limit=${LIMIT}&offset=0`;
+    const url = `${API_BASE}/api/search?q=${encodeURIComponent(debouncedQuery)}&source=${source}&type=${filterType}&limit=${LIMIT}&offset=0`;
 
     fetch(url, { signal: controller.signal })
       .then(res => {
@@ -123,7 +124,7 @@ export function useSearch() {
     offsetRef.current = nextOffset;
     setIsLoadingMore(true);
 
-    const url = `/api/search?q=${encodeURIComponent(debouncedQuery)}&source=${source}&type=${filterType}&limit=${LIMIT}&offset=${nextOffset}`;
+    const url = `${API_BASE}/api/search?q=${encodeURIComponent(debouncedQuery)}&source=${source}&type=${filterType}&limit=${LIMIT}&offset=${nextOffset}`;
 
     fetch(url)
       .then(res => res.json())

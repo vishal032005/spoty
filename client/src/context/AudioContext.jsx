@@ -29,6 +29,59 @@ export function AudioProvider({ children }) {
   });
   const [errorNotice, setErrorNotice] = useState(null);
 
+  // Mutable refs to prevent stale closure bugs in event callbacks & background loops
+  const queueRef = useRef(queue);
+  const queueIndexRef = useRef(queueIndex);
+  const isShuffleRef = useRef(isShuffle);
+  const repeatModeRef = useRef(repeatMode);
+  const isPlayingRef = useRef(isPlaying);
+  const userPausedRef = useRef(false);
+  const keepAliveAudioRef = useRef(null);
+
+  const SILENT_AUDIO = 'data:audio/wav;base64,UklGRigAAABXQVZFZm10IBIAAAABAAEARKwAAIhYAQACABAAAABkYXRhAgAAAAEA';
+
+  useEffect(() => { queueRef.current = queue; }, [queue]);
+  useEffect(() => { queueIndexRef.current = queueIndex; }, [queueIndex]);
+  useEffect(() => { isShuffleRef.current = isShuffle; }, [isShuffle]);
+  useEffect(() => { repeatModeRef.current = repeatMode; }, [repeatMode]);
+  useEffect(() => { isPlayingRef.current = isPlaying; }, [isPlaying]);
+
+  // Robust Next Track / Song End Handler (reads from mutable refs)
+  const handleTrackEnded = () => {
+    if (repeatModeRef.current === 'one') {
+      if (isYouTubeRef.current) {
+        ytPlayerRef.current?.seekTo(0, true);
+        ytPlayerRef.current?.playVideo();
+      } else {
+        const audio = audioRef.current;
+        audio.currentTime = 0;
+        audio.play().catch(console.error);
+      }
+      return;
+    }
+
+    const currentQueue = queueRef.current;
+    if (!currentQueue || currentQueue.length === 0) return;
+
+    let nextIdx;
+    if (isShuffleRef.current) {
+      nextIdx = Math.floor(Math.random() * currentQueue.length);
+    } else {
+      nextIdx = queueIndexRef.current + 1;
+      if (nextIdx >= currentQueue.length) {
+        // If at end of queue/playlist, loop back to the beginning
+        nextIdx = 0;
+      }
+    }
+
+    const nextT = currentQueue[nextIdx];
+    if (nextT) {
+      setQueueIndex(nextIdx);
+      queueIndexRef.current = nextIdx;
+      playTrack(nextT, currentQueue);
+    }
+  };
+
   // Initialize YouTube Iframe Player
   useEffect(() => {
     function initYT() {
@@ -53,25 +106,36 @@ export function AudioProvider({ children }) {
                   ytPlayerRef.current.loadVideoById(vid);
                   ytPlayerRef.current.playVideo();
                   setIsPlaying(true);
+                  isPlayingRef.current = true;
                 }
               },
               onStateChange: (event) => {
                 if (event.data === window.YT.PlayerState.PLAYING) {
                   setIsPlaying(true);
+                  isPlayingRef.current = true;
+                  userPausedRef.current = false;
                   setErrorNotice(null);
+                  try { keepAliveAudioRef.current?.play(); } catch {}
                 } else if (event.data === window.YT.PlayerState.PAUSED) {
-                  setIsPlaying(false);
-                } else if (event.data === window.YT.PlayerState.ENDED) {
-                  if (repeatMode === 'one') {
-                    ytPlayerRef.current?.seekTo(0, true);
-                    ytPlayerRef.current?.playVideo();
+                  // If pause was NOT user-initiated (e.g. Android screen lock or app minimize)
+                  if (isPlayingRef.current && !userPausedRef.current) {
+                    setTimeout(() => {
+                      if (!userPausedRef.current) {
+                        try { ytPlayerRef.current?.playVideo(); } catch {}
+                      }
+                    }, 80);
                   } else {
-                    nextTrack();
+                    setIsPlaying(false);
+                    isPlayingRef.current = false;
+                    try { keepAliveAudioRef.current?.pause(); } catch {}
                   }
+                } else if (event.data === window.YT.PlayerState.ENDED) {
+                  handleTrackEnded();
                 }
               },
               onError: (err) => {
                 console.warn('YouTube Player playback warning:', err);
+                handleTrackEnded();
               }
             }
           });
@@ -86,7 +150,7 @@ export function AudioProvider({ children }) {
     } else {
       window.onYouTubeIframeAPIReady = initYT;
     }
-  }, [repeatMode]);
+  }, []);
 
   // Track elapsed time & duration smoothly for YouTube
   useEffect(() => {
@@ -136,12 +200,7 @@ export function AudioProvider({ children }) {
 
     const onEnded = () => {
       if (!isYouTubeRef.current) {
-        if (repeatMode === 'one') {
-          audio.currentTime = 0;
-          audio.play().catch(console.error);
-        } else {
-          nextTrack();
-        }
+        handleTrackEnded();
       }
     };
 
@@ -226,13 +285,25 @@ export function AudioProvider({ children }) {
   const playTrack = (track, newQueue = null) => {
     if (!track) return;
 
+    userPausedRef.current = false;
+    isPlayingRef.current = true;
     setCurrentTrack(track);
     setErrorNotice(null);
 
-    if (newQueue && Array.isArray(newQueue)) {
+    // Keep background audio active in Android
+    try {
+      if (keepAliveAudioRef.current) {
+        keepAliveAudioRef.current.play().catch(() => {});
+      }
+    } catch {}
+
+    if (newQueue && Array.isArray(newQueue) && newQueue.length > 0) {
       setQueue(newQueue);
+      queueRef.current = newQueue;
       const index = newQueue.findIndex(t => t.id === track.id);
-      setQueueIndex(index !== -1 ? index : 0);
+      const targetIndex = index !== -1 ? index : 0;
+      setQueueIndex(targetIndex);
+      queueIndexRef.current = targetIndex;
     }
 
     const isYT = track.previewUrl?.startsWith('youtube:') || track.id?.startsWith('yt_');
@@ -261,6 +332,7 @@ export function AudioProvider({ children }) {
 
       if (!track.previewUrl) {
         setErrorNotice('No audio stream URL available for this item.');
+        handleTrackEnded();
         return;
       }
 
@@ -276,49 +348,46 @@ export function AudioProvider({ children }) {
 
   const togglePlayPause = () => {
     if (!currentTrack) {
-      if (queue.length > 0) {
-        playTrack(queue[0], queue);
+      if (queueRef.current.length > 0) {
+        playTrack(queueRef.current[0], queueRef.current);
       }
       return;
     }
 
     if (isYouTubeRef.current) {
       if (isPlaying) {
+        userPausedRef.current = true;
         try { ytPlayerRef.current?.pauseVideo(); } catch {}
+        try { keepAliveAudioRef.current?.pause(); } catch {}
         setIsPlaying(false);
+        isPlayingRef.current = false;
       } else {
+        userPausedRef.current = false;
         try { ytPlayerRef.current?.playVideo(); } catch {}
+        try { keepAliveAudioRef.current?.play(); } catch {}
         setIsPlaying(true);
+        isPlayingRef.current = true;
       }
     } else {
       const audio = audioRef.current;
       if (audio.paused) {
+        userPausedRef.current = false;
         audio.play().catch(console.error);
+        try { keepAliveAudioRef.current?.play(); } catch {}
+        setIsPlaying(true);
+        isPlayingRef.current = true;
       } else {
+        userPausedRef.current = true;
         audio.pause();
+        try { keepAliveAudioRef.current?.pause(); } catch {}
+        setIsPlaying(false);
+        isPlayingRef.current = false;
       }
     }
   };
 
   const nextTrack = () => {
-    if (!queue || queue.length === 0) return;
-
-    let nextIdx;
-    if (isShuffle) {
-      nextIdx = Math.floor(Math.random() * queue.length);
-    } else {
-      nextIdx = queueIndex + 1;
-      if (nextIdx >= queue.length) {
-        if (repeatMode === 'all') nextIdx = 0;
-        else return;
-      }
-    }
-
-    setQueueIndex(nextIdx);
-    const nextT = queue[nextIdx];
-    if (nextT) {
-      playTrack(nextT, queue);
-    }
+    handleTrackEnded();
   };
 
   const prevTrack = () => {
@@ -328,15 +397,19 @@ export function AudioProvider({ children }) {
       return;
     }
 
-    if (!queue || queue.length === 0) return;
-    const prevIdx = queueIndex - 1;
-    if (prevIdx >= 0) {
+    const currentQueue = queueRef.current;
+    if (!currentQueue || currentQueue.length === 0) return;
+
+    let prevIdx = queueIndexRef.current - 1;
+    if (prevIdx < 0) {
+      prevIdx = currentQueue.length - 1;
+    }
+
+    const prevT = currentQueue[prevIdx];
+    if (prevT) {
       setQueueIndex(prevIdx);
-      playTrack(queue[prevIdx], queue);
-    } else if (repeatMode === 'all') {
-      const lastIdx = queue.length - 1;
-      setQueueIndex(lastIdx);
-      playTrack(queue[lastIdx], queue);
+      queueIndexRef.current = prevIdx;
+      playTrack(prevT, currentQueue);
     }
   };
 
@@ -451,6 +524,20 @@ export function AudioProvider({ children }) {
           left: -9999,
           width: 200,
           height: 200,
+          opacity: 0,
+          pointerEvents: 'none'
+        }}
+      />
+      {/* Hidden audio element loop for Android WebView background keep-alive */}
+      <audio
+        ref={keepAliveAudioRef}
+        loop
+        playsInline
+        src={SILENT_AUDIO}
+        style={{
+          position: 'fixed',
+          width: 0,
+          height: 0,
           opacity: 0,
           pointerEvents: 'none'
         }}
