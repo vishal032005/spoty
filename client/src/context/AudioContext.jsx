@@ -365,6 +365,41 @@ export function AudioProvider({ children }) {
     }
   }, [currentTrack, isPlaying]);
 
+  // Smart Audio Engine: Match YouTube track title/artist with high-fidelity direct 320kbps background stream
+  const matchSmartAudioStream = async (track) => {
+    try {
+      const cleanTitle = (track.title || '')
+        .replace(/^(full\s+)?(video|song|audio|lyric(al)?\s+video)\s*[:|-]\s*/i, '')
+        .replace(/\s*[\(\[](official|video|audio|lyric|lyrics|full\s+song|hd|4k|remix|from|teaser|trailer|song).*?[\)\]]/gi, '')
+        .replace(/\|\s*.*$/g, '')
+        .replace(/-\s*.*$/g, '')
+        .replace(/[^\w\s\u0900-\u097F]/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+
+      if (!cleanTitle) return null;
+
+      const url = `https://saavnapi-nine.vercel.app/result/?query=${encodeURIComponent(cleanTitle)}`;
+      const res = await fetch(url, { signal: AbortSignal.timeout(2000) });
+      if (!res.ok) return null;
+      const songs = await res.json();
+      if (!Array.isArray(songs) || songs.length === 0) return null;
+
+      // Find first song with working audio stream
+      const best = songs.find(s => s.media_url || s.media_preview_url);
+      if (best) {
+        return {
+          audioUrl: best.media_url || best.media_preview_url,
+          duration: parseInt(best.duration, 10) || track.duration || 240,
+          image: best.image || track.image
+        };
+      }
+      return null;
+    } catch {
+      return null;
+    }
+  };
+
   const playTrack = (track, newQueue = null) => {
     if (!track) return;
 
@@ -387,15 +422,37 @@ export function AudioProvider({ children }) {
       }
     }
 
-    // Instant YouTube Playback: Bypass slow server roundtrip and play immediately via YouTube player
+    // Smart Audio Engine: For YouTube items, match 320kbps background stream
     const isYT = track.id?.startsWith('yt_') || 
                  track.previewUrl?.startsWith('youtube:') || 
                  track.previewUrl?.includes('youtube.com') ||
                  track.tag?.toLowerCase().includes('youtube');
 
     if (isYT) {
-      try { audioRef.current.pause(); } catch {}
-      playViaYouTubeIframe(track);
+      matchSmartAudioStream(track).then(matched => {
+        if (matched && matched.audioUrl) {
+          console.log('[Smart Audio Engine] Swapped to 320kbps pure background stream:', track.title);
+          isYouTubeRef.current = false;
+          if (matched.duration) setDuration(matched.duration);
+          
+          const audio = audioRef.current;
+          audio.src = matched.audioUrl;
+          audio.play().then(() => {
+            setIsPlaying(true);
+            isPlayingRef.current = true;
+          }).catch(err => {
+            console.warn('[Smart Audio Engine] Play error, falling back to YouTube:', err.message);
+            playViaYouTubeIframe(track);
+          });
+        } else {
+          // Play via YouTube player if no direct stream match exists
+          try { audioRef.current.pause(); } catch {}
+          playViaYouTubeIframe(track);
+        }
+      }).catch(() => {
+        try { audioRef.current.pause(); } catch {}
+        playViaYouTubeIframe(track);
+      });
       return;
     }
 
