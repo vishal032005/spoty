@@ -37,8 +37,50 @@ export function AudioProvider({ children }) {
   const isPlayingRef = useRef(isPlaying);
   const userPausedRef = useRef(false);
   const keepAliveAudioRef = useRef(null);
+  const webAudioKeepAliveRef = useRef(null);
 
   const SILENT_AUDIO = 'data:audio/wav;base64,UklGRigAAABXQVZFZm10IBIAAAABAAEARKwAAIhYAQACABAAAABkYXRhAgAAAAEA';
+
+  // Hardware Audio Pipeline Keep-Alive for Android Lock Screen
+  const startKeepAliveAudio = () => {
+    try {
+      if (!webAudioKeepAliveRef.current) {
+        const AudioCtxClass = window.AudioContext || window.webkitAudioContext;
+        if (AudioCtxClass) {
+          const ctx = new AudioCtxClass();
+          const osc = ctx.createOscillator();
+          const gain = ctx.createGain();
+          gain.gain.value = 0.0001; // Inaudible, but keeps Android hardware AudioTrack active
+          osc.connect(gain);
+          gain.connect(ctx.destination);
+          osc.start();
+          webAudioKeepAliveRef.current = { ctx, osc, gain };
+        }
+      } else if (webAudioKeepAliveRef.current.ctx.state === 'suspended') {
+        webAudioKeepAliveRef.current.ctx.resume();
+      }
+    } catch {}
+
+    try {
+      if (keepAliveAudioRef.current) {
+        keepAliveAudioRef.current.play().catch(() => {});
+      }
+    } catch {}
+  };
+
+  const stopKeepAliveAudio = () => {
+    try {
+      if (webAudioKeepAliveRef.current?.ctx?.state === 'running') {
+        webAudioKeepAliveRef.current.ctx.suspend();
+      }
+    } catch {}
+
+    try {
+      if (keepAliveAudioRef.current) {
+        keepAliveAudioRef.current.pause();
+      }
+    } catch {}
+  };
 
   useEffect(() => { queueRef.current = queue; }, [queue]);
   useEffect(() => { queueIndexRef.current = queueIndex; }, [queueIndex]);
@@ -115,7 +157,7 @@ export function AudioProvider({ children }) {
                   isPlayingRef.current = true;
                   userPausedRef.current = false;
                   setErrorNotice(null);
-                  try { keepAliveAudioRef.current?.play(); } catch {}
+                  startKeepAliveAudio();
                 } else if (event.data === window.YT.PlayerState.PAUSED) {
                   // If pause was NOT user-initiated (e.g. Android screen lock or app minimize)
                   if (isPlayingRef.current && !userPausedRef.current) {
@@ -123,11 +165,11 @@ export function AudioProvider({ children }) {
                       if (!userPausedRef.current) {
                         try { ytPlayerRef.current?.playVideo(); } catch {}
                       }
-                    }, 80);
+                    }, 50);
                   } else {
                     setIsPlaying(false);
                     isPlayingRef.current = false;
-                    try { keepAliveAudioRef.current?.pause(); } catch {}
+                    stopKeepAliveAudio();
                   }
                 } else if (event.data === window.YT.PlayerState.ENDED) {
                   handleTrackEnded();
@@ -291,11 +333,7 @@ export function AudioProvider({ children }) {
     setErrorNotice(null);
 
     // Keep background audio active in Android
-    try {
-      if (keepAliveAudioRef.current) {
-        keepAliveAudioRef.current.play().catch(() => {});
-      }
-    } catch {}
+    startKeepAliveAudio();
 
     if (newQueue && Array.isArray(newQueue) && newQueue.length > 0) {
       setQueue(newQueue);
@@ -358,13 +396,13 @@ export function AudioProvider({ children }) {
       if (isPlaying) {
         userPausedRef.current = true;
         try { ytPlayerRef.current?.pauseVideo(); } catch {}
-        try { keepAliveAudioRef.current?.pause(); } catch {}
+        stopKeepAliveAudio();
         setIsPlaying(false);
         isPlayingRef.current = false;
       } else {
         userPausedRef.current = false;
         try { ytPlayerRef.current?.playVideo(); } catch {}
-        try { keepAliveAudioRef.current?.play(); } catch {}
+        startKeepAliveAudio();
         setIsPlaying(true);
         isPlayingRef.current = true;
       }
@@ -373,13 +411,13 @@ export function AudioProvider({ children }) {
       if (audio.paused) {
         userPausedRef.current = false;
         audio.play().catch(console.error);
-        try { keepAliveAudioRef.current?.play(); } catch {}
+        startKeepAliveAudio();
         setIsPlaying(true);
         isPlayingRef.current = true;
       } else {
         userPausedRef.current = true;
         audio.pause();
-        try { keepAliveAudioRef.current?.pause(); } catch {}
+        stopKeepAliveAudio();
         setIsPlaying(false);
         isPlayingRef.current = false;
       }
@@ -515,17 +553,18 @@ export function AudioProvider({ children }) {
       clearError: () => setErrorNotice(null)
     }}>
       {children}
-      {/* Invisible YouTube Player iframe container for background full track audio */}
+      {/* Active YouTube Player iframe kept in active viewport (1px) to prevent Chromium background discard */}
       <div
         id="spoty-yt-iframe"
         style={{
           position: 'fixed',
-          top: -9999,
-          left: -9999,
-          width: 200,
-          height: 200,
-          opacity: 0,
-          pointerEvents: 'none'
+          bottom: 0,
+          right: 0,
+          width: 1,
+          height: 1,
+          opacity: 0.01,
+          pointerEvents: 'none',
+          zIndex: -1
         }}
       />
       {/* Hidden audio element loop for Android WebView background keep-alive */}
