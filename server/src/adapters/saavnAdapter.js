@@ -6,51 +6,48 @@ class SaavnAdapter extends BaseAdapter {
   }
 
   async search(query, options = {}) {
-    const limit = Math.min(parseInt(options.limit, 10) || 20, 30);
     const cleanQuery = query.trim();
+    if (!cleanQuery) return [];
 
-    const url = `https://saavn.dev/api/search/songs?query=${encodeURIComponent(cleanQuery)}&limit=${limit}`;
-    const res = await fetch(url, {
-      headers: { 'User-Agent': 'Mozilla/5.0' },
-      signal: AbortSignal.timeout(6000)
-    });
-
-    if (!res.ok) {
-      throw new Error(`JioSaavn API error: HTTP ${res.status}`);
-    }
-
-    const json = await res.json();
-    const songs = json?.data?.results || [];
-
-    return songs.map(song => {
-      // Find 320kbps or best available download URL
-      const streamObj = (song.downloadUrl || []).find(d => d.quality === '320kbps') ||
-                        (song.downloadUrl || []).find(d => d.quality === '160kbps') ||
-                        (song.downloadUrl || [])[song.downloadUrl?.length - 1];
-      const audioUrl = streamObj?.url || '';
-
-      // High-res image
-      const imgObj = (song.image || []).find(i => i.quality === '500x500') ||
-                     (song.image || [])[song.image?.length - 1];
-      const imgUrl = imgObj?.url || '';
-
-      const artists = song.artists?.primary?.map(a => a.name).join(', ') ||
-                      song.artists?.all?.map(a => a.name).join(', ') ||
-                      'Various Artists';
-
-      return this.formatItem({
-        type: 'track',
-        title: song.name ? song.name.replace(/&quot;/g, '"').replace(/&amp;/g, '&') : 'Unknown Title',
-        image: imgUrl,
-        subtitle: artists,
-        id: `saavn_${song.id}`,
-        tag: 'JioSaavn (Full Track)',
-        previewUrl: audioUrl,
-        duration: parseInt(song.duration, 10) || 180
+    try {
+      const url = `https://saavnapi-nine.vercel.app/result/?query=${encodeURIComponent(cleanQuery)}`;
+      const res = await fetch(url, {
+        headers: { 'User-Agent': 'Mozilla/5.0' },
+        signal: AbortSignal.timeout(6000)
       });
-    }).filter(s => Boolean(s.previewUrl));
+
+      if (!res.ok) {
+        throw new Error(`JioSaavn API HTTP ${res.status}`);
+      }
+
+      const songs = await res.json();
+      if (!Array.isArray(songs)) return [];
+
+      return songs.map(song => {
+        const audioUrl = song.media_url || song.media_preview_url || '';
+        const title = (song.song || 'Unknown Title')
+          .replace(/&quot;/g, '"')
+          .replace(/&amp;/g, '&')
+          .replace(/&#039;/g, "'");
+        const artist = song.primary_artists || song.singers || song.music || 'Various Artists';
+        const image = song.image || '';
+
+        return this.formatItem({
+          type: 'track',
+          title,
+          image,
+          subtitle: artist,
+          id: `saavn_${song.id || Math.random().toString(36).substring(7)}`,
+          tag: 'JioSaavn (Full 320kbps)',
+          previewUrl: audioUrl,
+          duration: parseInt(song.duration, 10) || 240
+        });
+      }).filter(s => Boolean(s.previewUrl));
+    } catch (err) {
+      console.warn('[SaavnAdapter] Search error:', err.message);
+      return [];
+    }
   }
 }
 
 module.exports = SaavnAdapter;
-

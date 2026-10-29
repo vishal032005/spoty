@@ -336,12 +336,14 @@ export function AudioProvider({ children }) {
     startKeepAliveAudio();
 
     if (newQueue && Array.isArray(newQueue) && newQueue.length > 0) {
-      setQueue(newQueue);
-      queueRef.current = newQueue;
-      const index = newQueue.findIndex(t => t.id === track.id);
-      const targetIndex = index !== -1 ? index : 0;
-      setQueueIndex(targetIndex);
-      queueIndexRef.current = targetIndex;
+      if (newQueue !== queueRef.current) {
+        setQueue(newQueue);
+        queueRef.current = newQueue;
+        const index = newQueue.findIndex(t => t.id === track.id);
+        const targetIndex = index !== -1 ? index : 0;
+        setQueueIndex(targetIndex);
+        queueIndexRef.current = targetIndex;
+      }
     }
 
     const isYT = track.previewUrl?.startsWith('youtube:') || track.id?.startsWith('yt_');
@@ -376,7 +378,6 @@ export function AudioProvider({ children }) {
 
       const audio = audioRef.current;
       audio.src = track.previewUrl;
-      audio.load();
       audio.play().catch(err => {
         console.warn('Autoplay blocked or error:', err.message);
         setIsPlaying(false);

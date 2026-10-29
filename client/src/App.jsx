@@ -23,30 +23,30 @@ const DEFAULT_PLAYLISTS = [
     color: '#e74c3c',
     tracks: [
       {
-        id: 'yt_ebZj_nrmH-c',
-        title: 'Barsaat - Banjaare (Official Video)',
-        subtitle: 'Banjaare and Sony Music India',
-        image: 'https://i.ytimg.com/vi/ebZj_nrmH-c/hq720.jpg',
-        tag: 'YouTube (Full Track)',
-        previewUrl: 'youtube:ebZj_nrmH-c',
-        duration: 186
+        id: 'saavn_barsaat_main',
+        title: 'Barsaat',
+        subtitle: 'Armaan Malik, Payal Dev',
+        image: 'https://c.saavncdn.com/236/Barsaat-Unknown-2026-20260708180612-500x500.jpg',
+        tag: 'Direct 320kbps (Lock Screen Play)',
+        previewUrl: 'https://aac.saavncdn.com/236/3895fcff973f4254da484f534a8f1392_320.mp4',
+        duration: 236
       },
       {
-        id: 'yt_BddP6PYo2gs',
+        id: 'saavn_kesariya_main',
         title: 'Kesariya - Brahmāstra',
         subtitle: 'Arijit Singh, Pritam',
-        image: 'https://i.ytimg.com/vi/BddP6PYo2gs/hqdefault.jpg',
-        tag: 'YouTube (Full Track)',
-        previewUrl: 'youtube:BddP6PYo2gs',
+        image: 'https://c.saavncdn.com/871/Brahmastra-Original-Motion-Picture-Soundtrack-Hindi-2022-20221006155213-500x500.jpg',
+        tag: 'Direct 320kbps (Lock Screen Play)',
+        previewUrl: 'https://aac.saavncdn.com/871/c2febd353f3a076a406fa37510f31f9f_320.mp4',
         duration: 268
       },
       {
-        id: 'yt_gvyUuxdRdR4',
+        id: 'saavn_raataan_main',
         title: 'Raataan Lambiyan - Shershaah',
         subtitle: 'Jubin Nautiyal, Asees Kaur',
-        image: 'https://i.ytimg.com/vi/gvyUuxdRdR4/hqdefault.jpg',
-        tag: 'YouTube (Full Track)',
-        previewUrl: 'youtube:gvyUuxdRdR4',
+        image: 'https://c.saavncdn.com/238/Shershaah-Original-Motion-Picture-Soundtrack--Hindi-2021-20210815181610-500x500.jpg',
+        tag: 'Direct 320kbps (Lock Screen Play)',
+        previewUrl: 'https://aac.saavncdn.com/238/35726d4394604604e961bf5b846870d0_320.mp4',
         duration: 230
       }
     ]

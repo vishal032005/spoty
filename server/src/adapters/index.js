@@ -77,7 +77,7 @@ class AdapterService {
     }
 
     const cleanQuery = query.trim();
-    const source = (options.source || 'piped').toLowerCase();
+    const source = (options.source || 'saavn').toLowerCase();
     const limit = Math.min(Math.max(parseInt(options.limit, 10) || 20, 1), 50);
     const offset = Math.max(parseInt(options.offset, 10) || 0, 0);
 
@@ -89,14 +89,24 @@ class AdapterService {
           return results;
         }
 
-        console.warn(`[AdapterService] ${source} returned 0 results. Trying itunes fallback...`);
+        console.warn(`[AdapterService] ${source} returned 0 results. Trying fallback...`);
+        if (source !== 'saavn') {
+          const saavnResults = await this.adapters.saavn.search(cleanQuery, { ...options, limit, offset }).catch(() => []);
+          if (saavnResults && saavnResults.length > 0) return saavnResults;
+        }
         if (source !== 'itunes') {
           return await this.adapters.itunes.search(cleanQuery, { ...options, limit, offset });
         }
       } catch (err) {
         console.warn(`[AdapterService] Error in ${source} adapter:`, err.message);
 
-        // Fallback to iTunes so user always gets song results
+        // Fallback to Saavn then iTunes so user always gets song results
+        if (source !== 'saavn') {
+          try {
+            const saavnRes = await this.adapters.saavn.search(cleanQuery, { ...options, limit, offset });
+            if (saavnRes && saavnRes.length > 0) return saavnRes;
+          } catch {}
+        }
         if (source !== 'itunes') {
           try {
             console.log('[AdapterService] Attempting iTunes fallback...');
