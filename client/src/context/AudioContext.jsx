@@ -387,16 +387,23 @@ export function AudioProvider({ children }) {
       }
     }
 
-    // Resolve audio URL: All tracks (including YouTube) play via direct audio stream for 100% reliable background & lock screen play
+    // Instant YouTube Playback: Bypass slow server roundtrip and play immediately via YouTube player
+    const isYT = track.id?.startsWith('yt_') || 
+                 track.previewUrl?.startsWith('youtube:') || 
+                 track.previewUrl?.includes('youtube.com') ||
+                 track.tag?.toLowerCase().includes('youtube');
+
+    if (isYT) {
+      try { audioRef.current.pause(); } catch {}
+      playViaYouTubeIframe(track);
+      return;
+    }
+
+    // Direct High-Fidelity Audio Streams (JioSaavn 320kbps, etc.) play via native HTML5 Audio
+    isYouTubeRef.current = false;
     let audioUrl = track.previewUrl || '';
-    if (audioUrl.startsWith('youtube:')) {
-      const vid = audioUrl.replace('youtube:', '');
-      audioUrl = `${API_BASE}/api/stream/youtube?id=${vid}`;
-    } else if (audioUrl.startsWith('/api/')) {
+    if (audioUrl.startsWith('/api/')) {
       audioUrl = `${API_BASE}${audioUrl}`;
-    } else if (!audioUrl && track.id?.startsWith('yt_')) {
-      const vid = track.id.replace('yt_', '');
-      audioUrl = `${API_BASE}/api/stream/youtube?id=${vid}`;
     }
 
     if (!audioUrl) {
@@ -405,7 +412,6 @@ export function AudioProvider({ children }) {
       return;
     }
 
-    isYouTubeRef.current = false;
     if (track.duration) {
       setDuration(track.duration);
     }
